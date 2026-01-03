@@ -1,0 +1,156 @@
+name: Build
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # =============================================================================
+  # Linux Build
+  # =============================================================================
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libfontconfig1-dev \
+          libxrandr-dev \
+          libxinerama-dev \
+          libxcursor-dev \
+          libxi-dev \
+          libxext-dev \
+          libx11-dev \
+          libgl1-mesa-dev \
+          ninja-build
+
+    - name: Build
+      run: make build-desktop-release
+
+    - name: Package
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        mkdir -p dist
+        ARCH=$(uname -m)
+        VERSION=${{ github.ref_name }}
+        PACKAGE_NAME="yetty-plugins-linux-${ARCH}-${VERSION}"
+        mkdir -p "$PACKAGE_NAME/plugins"
+        cp build-desktop-release/plugins/*.so "$PACKAGE_NAME/plugins/"
+        cp build-desktop-release/lib/libyetty_core.so "$PACKAGE_NAME/"
+        tar -czvf "dist/${PACKAGE_NAME}.tar.gz" "$PACKAGE_NAME"
+        rm -rf "$PACKAGE_NAME"
+
+    - name: Upload artifact
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-build
+        path: dist/*.tar.gz
+
+  # =============================================================================
+  # macOS Build
+  # =============================================================================
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: brew install ninja
+
+    - name: Build
+      run: make build-desktop-release
+
+    - name: Package
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        mkdir -p dist
+        ARCH=$(uname -m)
+        VERSION=${{ github.ref_name }}
+        PACKAGE_NAME="yetty-plugins-macos-${ARCH}-${VERSION}"
+        mkdir -p "$PACKAGE_NAME/plugins"
+        cp build-desktop-release/plugins/*.dylib "$PACKAGE_NAME/plugins/" 2>/dev/null || cp build-desktop-release/plugins/*.so "$PACKAGE_NAME/plugins/"
+        cp build-desktop-release/lib/libyetty_core.dylib "$PACKAGE_NAME/" 2>/dev/null || cp build-desktop-release/lib/libyetty_core.so "$PACKAGE_NAME/"
+        tar -czvf "dist/${PACKAGE_NAME}.tar.gz" "$PACKAGE_NAME"
+        rm -rf "$PACKAGE_NAME"
+
+    - name: Upload artifact
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-build
+        path: dist/*.tar.gz
+
+  # =============================================================================
+  # Windows Build
+  # =============================================================================
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure CMake
+      run: cmake -B build-desktop-release -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build build-desktop-release --config Release --parallel
+
+    - name: Package
+      if: startsWith(github.ref, 'refs/tags/')
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path dist | Out-Null
+        $Version = "${{ github.ref_name }}"
+        $PackageName = "yetty-plugins-windows-x86_64-${Version}"
+        New-Item -ItemType Directory -Force -Path $PackageName | Out-Null
+        New-Item -ItemType Directory -Force -Path "$PackageName/plugins" | Out-Null
+        Copy-Item "build-desktop-release/plugins/Release/*.dll" "$PackageName/plugins/" -ErrorAction SilentlyContinue
+        Copy-Item "build-desktop-release/lib/Release/yetty_core.dll" "$PackageName/" -ErrorAction SilentlyContinue
+        Compress-Archive -Path $PackageName -DestinationPath "dist/${PackageName}.zip"
+        Remove-Item -Recurse -Force $PackageName
+
+    - name: Upload artifact
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-build
+        path: dist/*.zip
+
+  # =============================================================================
+  # Create GitHub Release (only on tags)
+  # =============================================================================
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Collect release files
+      run: |
+        mkdir -p release-files
+        find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-files/ \;
+        ls -la release-files/
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: release-files/*
+        generate_release_notes: true
+        draft: false
+        prerelease: ${{ contains(github.ref_name, '-') }}
