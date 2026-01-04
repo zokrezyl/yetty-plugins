@@ -28,12 +28,6 @@ public:
 
     Result<PluginLayerPtr> createLayer(const std::string& payload) override;
 
-    Result<void> renderAll(WGPUTextureView targetView, WGPUTextureFormat targetFormat,
-                           uint32_t screenWidth, uint32_t screenHeight,
-                           float cellWidth, float cellHeight,
-                           int scrollOffset, uint32_t termRows,
-                           bool isAltScreen = false) override;
-
     FontManager* getFontManager();
 
 private:
@@ -54,10 +48,8 @@ public:
     Result<void> init(const std::string& payload) override;
     Result<void> dispose() override;
 
-    Result<void> render(WebGPUContext& ctx,
-                        WGPUTextureView targetView, WGPUTextureFormat targetFormat,
-                        uint32_t screenWidth, uint32_t screenHeight,
-                        float pixelX, float pixelY, float pixelW, float pixelH);
+    // Renderable interface - uses RenderContext from base class
+    Result<void> render(WebGPUContext& ctx) override;
 
     // Mouse scrolling
     bool onMouseScroll(float xoffset, float yoffset, int mods) override;

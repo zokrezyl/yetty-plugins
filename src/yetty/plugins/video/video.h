@@ -35,12 +35,6 @@ public:
 
     Result<PluginLayerPtr> createLayer(const std::string& payload) override;
 
-    Result<void> renderAll(WGPUTextureView targetView, WGPUTextureFormat targetFormat,
-                           uint32_t screenWidth, uint32_t screenHeight,
-                           float cellWidth, float cellHeight,
-                           int scrollOffset, uint32_t termRows,
-                           bool isAltScreen = false) override;
-
     // Check if data looks like a video format
     static bool isVideoFormat(const std::string& data);
 
@@ -59,12 +53,9 @@ public:
 
     Result<void> init(const std::string& payload) override;
     Result<void> dispose() override;
-    Result<void> update(double deltaTime) override;
 
-    Result<void> render(WebGPUContext& ctx,
-                        WGPUTextureView targetView, WGPUTextureFormat targetFormat,
-                        uint32_t screenWidth, uint32_t screenHeight,
-                        float pixelX, float pixelY, float pixelW, float pixelH);
+    // Renderable interface - uses RenderContext from base class
+    Result<void> render(WebGPUContext& ctx) override;
 
     // Playback control
     void play();

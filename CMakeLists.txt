@@ -175,8 +175,10 @@ if(UNIX AND NOT APPLE)
     target_compile_definitions(glfw3webgpu PRIVATE _GLFW_X11)
 endif()
 
-# FFmpeg for video plugin
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/build-tools/cmake/ffmpeg ffmpeg_build)
+# FFmpeg for video plugin (Unix only - requires ./configure + make)
+if(UNIX)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/build-tools/cmake/ffmpeg ffmpeg_build)
+endif()
 
 #-----------------------------------------------------------------------------
 # Build yetty_core shared library from fetched sources

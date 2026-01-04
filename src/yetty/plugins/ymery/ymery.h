@@ -31,11 +31,8 @@ public:
 
     Result<PluginLayerPtr> createLayer(const std::string& payload) override;
 
-    Result<void> renderAll(WGPUTextureView targetView, WGPUTextureFormat targetFormat,
-                           uint32_t screenWidth, uint32_t screenHeight,
-                           float cellWidth, float cellHeight,
-                           int scrollOffset, uint32_t termRows,
-                           bool isAltScreen = false) override;
+    // Shared render for ImGui - called once per frame for all layers
+    Result<void> render(WebGPUContext& ctx) override;
 
 #ifdef YETTY_YMERY_ENABLED
     ImGuiContext* imguiContext() const { return _imgui_ctx; }
@@ -73,6 +70,9 @@ public:
 
     Result<void> init(const std::string& payload) override;
     Result<void> dispose() override;
+
+    // Render is handled by the plugin's shared ImGui context
+    Result<void> render(WebGPUContext& ctx) override { (void)ctx; return Ok(); }
 
     bool onMouseMove(float x, float y) override;
     bool onMouseButton(int button, bool pressed) override;

@@ -88,46 +88,6 @@ Result<PluginLayerPtr> PDFPlugin::createLayer(const std::string& payload) {
     return Ok<PluginLayerPtr>(layer);
 }
 
-Result<void> PDFPlugin::renderAll(WGPUTextureView targetView, WGPUTextureFormat targetFormat,
-                                   uint32_t screenWidth, uint32_t screenHeight,
-                                   float cellWidth, float cellHeight,
-                                   int scrollOffset, uint32_t termRows,
-                                   bool isAltScreen) {
-    if (!engine_) return Err<void>("PDFPlugin::renderAll: no engine");
-
-    ScreenType currentScreen = isAltScreen ? ScreenType::Alternate : ScreenType::Main;
-
-    for (auto& layerBase : _layers) {
-        if (!layerBase->isVisible()) continue;
-        if (layerBase->getScreenType() != currentScreen) continue;
-
-        auto layer = std::static_pointer_cast<PDFLayer>(layerBase);
-
-        float pixelX = layer->getX() * cellWidth;
-        float pixelY = layer->getY() * cellHeight;
-        float pixelW = layer->getWidthCells() * cellWidth;
-        float pixelH = layer->getHeightCells() * cellHeight;
-
-        if (layer->getPositionMode() == PositionMode::Relative && scrollOffset > 0) {
-            pixelY += scrollOffset * cellHeight;
-        }
-
-        if (termRows > 0) {
-            float screenPixelHeight = termRows * cellHeight;
-            if (pixelY + pixelH <= 0 || pixelY >= screenPixelHeight) {
-                continue;
-            }
-        }
-
-        if (auto res = layer->render(*engine_->context(), targetView, targetFormat,
-                                      screenWidth, screenHeight,
-                                      pixelX, pixelY, pixelW, pixelH); !res) {
-            return Err<void>("Failed to render PDFLayer", res);
-        }
-    }
-    return Ok();
-}
-
 //-----------------------------------------------------------------------------
 // PDFLayer
 //-----------------------------------------------------------------------------
@@ -400,11 +360,31 @@ void PDFLayer::buildRichTextContent(float viewWidth) {
 // Render
 //-----------------------------------------------------------------------------
 
-Result<void> PDFLayer::render(WebGPUContext& ctx,
-                               WGPUTextureView targetView, WGPUTextureFormat targetFormat,
-                               uint32_t screenWidth, uint32_t screenHeight,
-                               float pixelX, float pixelY, float pixelW, float pixelH) {
+Result<void> PDFLayer::render(WebGPUContext& ctx) {
     if (failed_) return Err<void>("PDFLayer already failed");
+    if (!_visible) return Ok();
+
+    // Get render context set by owner
+    const auto& rc = _render_context;
+
+    // Calculate pixel position from cell position
+    float pixelX = _x * rc.cellWidth;
+    float pixelY = _y * rc.cellHeight;
+    float pixelW = _width_cells * rc.cellWidth;
+    float pixelH = _height_cells * rc.cellHeight;
+
+    // For Relative layers, adjust position when viewing scrollback
+    if (_position_mode == PositionMode::Relative && rc.scrollOffset > 0) {
+        pixelY += rc.scrollOffset * rc.cellHeight;
+    }
+
+    // Skip if off-screen (not an error)
+    if (rc.termRows > 0) {
+        float screenPixelHeight = rc.termRows * rc.cellHeight;
+        if (pixelY + pixelH <= 0 || pixelY >= screenPixelHeight) {
+            return Ok();
+        }
+    }
 
     // Create RichText if needed
     if (!richText_) {
@@ -414,7 +394,7 @@ Result<void> PDFLayer::render(WebGPUContext& ctx,
             return Err<void>("No FontManager available for PDF rendering");
         }
 
-        auto result = RichText::create(&ctx, targetFormat, fontMgr);
+        auto result = RichText::create(&ctx, rc.targetFormat, fontMgr);
         if (!result) {
             failed_ = true;
             return Err<void>("Failed to create RichText", result);
@@ -452,7 +432,7 @@ Result<void> PDFLayer::render(WebGPUContext& ctx,
     richText_->setScrollOffset(scrollOffset_);
 
     // Render
-    return richText_->render(ctx, targetView, screenWidth, screenHeight,
+    return richText_->render(ctx, rc.targetView, rc.screenWidth, rc.screenHeight,
                               pixelX, pixelY, pixelW, pixelH);
 }
 

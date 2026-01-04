@@ -214,18 +214,16 @@ Result<void> YmeryPlugin::initImGui(uint32_t screenWidth, uint32_t screenHeight)
     return Ok();
 }
 
-Result<void> YmeryPlugin::renderAll(WGPUTextureView targetView, WGPUTextureFormat targetFormat,
-                                     uint32_t screenWidth, uint32_t screenHeight,
-                                     float cellWidth, float cellHeight,
-                                     int scrollOffset, uint32_t termRows,
-                                     bool isAltScreen) {
-    (void)targetFormat;
-    if (!engine_) return Err<void>("YmeryPlugin::renderAll: no engine");
+Result<void> YmeryPlugin::render(WebGPUContext& ctx) {
+    if (!engine_) return Err<void>("YmeryPlugin::render: no engine");
 
     if (_layers.empty()) return Ok();
 
+    // Get render context from the first layer (all layers share the same context)
+    const auto& rc = _layers[0]->getRenderContext();
+
     // Filter layers for current screen
-    ScreenType currentScreen = isAltScreen ? ScreenType::Alternate : ScreenType::Main;
+    ScreenType currentScreen = rc.isAltScreen ? ScreenType::Alternate : ScreenType::Main;
     bool hasVisibleLayers = false;
     for (auto& layer : _layers) {
         if (layer->isVisible() && layer->getScreenType() == currentScreen) {
@@ -237,7 +235,7 @@ Result<void> YmeryPlugin::renderAll(WGPUTextureView targetView, WGPUTextureForma
 
     // Initialize ImGui on first render
     if (!_imgui_ctx) {
-        if (auto res = initImGui(screenWidth, screenHeight); !res) {
+        if (auto res = initImGui(rc.screenWidth, rc.screenHeight); !res) {
             return Err<void>("Failed to initialize ImGui", res);
         }
     }
@@ -280,22 +278,20 @@ Result<void> YmeryPlugin::renderAll(WGPUTextureView targetView, WGPUTextureForma
     if (!_app) return Err<void>("YmeryPlugin: app not initialized");
 
     // Store cell dimensions for input coordinate calculation
-    _cell_width = cellWidth;
-    _cell_height = cellHeight;
+    _cell_width = rc.cellWidth;
+    _cell_height = rc.cellHeight;
 
     // Set ImGui context
     ImGui::SetCurrentContext(_imgui_ctx);
     ImPlot::SetCurrentContext(_implot_ctx);
 
-    // Calculate delta time
-    double currentTime = glfwGetTime();
-    float deltaTime = static_cast<float>(currentTime - _last_time);
+    // Use deltaTime from render context
+    float deltaTime = static_cast<float>(rc.deltaTime);
     if (deltaTime <= 0.0f) deltaTime = 1.0f / 60.0f;
-    _last_time = currentTime;
 
     // Update display size
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(static_cast<float>(screenWidth), static_cast<float>(screenHeight));
+    io.DisplaySize = ImVec2(static_cast<float>(rc.screenWidth), static_cast<float>(rc.screenHeight));
     io.DeltaTime = deltaTime;
 
     // Begin ImGui frame
@@ -309,19 +305,19 @@ Result<void> YmeryPlugin::renderAll(WGPUTextureView targetView, WGPUTextureForma
 
         auto layer = std::static_pointer_cast<YmeryLayer>(layerBase);
 
-        float pixelX = layer->getX() * cellWidth;
-        float pixelY = layer->getY() * cellHeight;
-        float pixelW = layer->getWidthCells() * cellWidth;
-        float pixelH = layer->getHeightCells() * cellHeight;
+        float pixelX = layer->getX() * rc.cellWidth;
+        float pixelY = layer->getY() * rc.cellHeight;
+        float pixelW = layer->getWidthCells() * rc.cellWidth;
+        float pixelH = layer->getHeightCells() * rc.cellHeight;
 
         // Adjust for scroll offset
-        if (layer->getPositionMode() == PositionMode::Relative && scrollOffset > 0) {
-            pixelY += scrollOffset * cellHeight;
+        if (layer->getPositionMode() == PositionMode::Relative && rc.scrollOffset > 0) {
+            pixelY += rc.scrollOffset * rc.cellHeight;
         }
 
         // Skip if off-screen
-        if (termRows > 0) {
-            float screenPixelHeight = termRows * cellHeight;
+        if (rc.termRows > 0) {
+            float screenPixelHeight = rc.termRows * rc.cellHeight;
             if (pixelY + pixelH <= 0 || pixelY >= screenPixelHeight) {
                 continue;
             }
@@ -340,7 +336,7 @@ Result<void> YmeryPlugin::renderAll(WGPUTextureView targetView, WGPUTextureForma
 
     // Create render pass
     WGPURenderPassColorAttachment colorAttachment = {};
-    colorAttachment.view = targetView;
+    colorAttachment.view = rc.targetView;
     colorAttachment.loadOp = WGPULoadOp_Load;
     colorAttachment.storeOp = WGPUStoreOp_Store;
 #if defined(WGPU_DEPTH_SLICE_UNDEFINED)

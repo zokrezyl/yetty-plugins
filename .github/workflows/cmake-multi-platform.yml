@@ -113,6 +113,7 @@ jobs:
         $PackageName = "yetty-plugins-windows-x86_64-${Version}"
         New-Item -ItemType Directory -Force -Path $PackageName | Out-Null
         New-Item -ItemType Directory -Force -Path "$PackageName/plugins" | Out-Null
+        # Note: video plugin not available on Windows (requires FFmpeg which needs Unix build tools)
         Copy-Item "build-desktop-release/plugins/Release/*.dll" "$PackageName/plugins/" -ErrorAction SilentlyContinue
         Copy-Item "build-desktop-release/lib/Release/yetty_core.dll" "$PackageName/" -ErrorAction SilentlyContinue
         Compress-Archive -Path $PackageName -DestinationPath "dist/${PackageName}.zip"

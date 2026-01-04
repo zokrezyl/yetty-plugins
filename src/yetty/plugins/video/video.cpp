@@ -155,45 +155,6 @@ Result<PluginLayerPtr> VideoPlugin::createLayer(const std::string& payload) {
     return Ok<PluginLayerPtr>(layer);
 }
 
-Result<void> VideoPlugin::renderAll(WGPUTextureView targetView, WGPUTextureFormat targetFormat,
-                                     uint32_t screenWidth, uint32_t screenHeight,
-                                     float cellWidth, float cellHeight,
-                                     int scrollOffset, uint32_t termRows,
-                                     bool isAltScreen) {
-    if (!engine_) return Err<void>("VideoPlugin::renderAll: no engine");
-
-    ScreenType currentScreen = isAltScreen ? ScreenType::Alternate : ScreenType::Main;
-    for (auto& layerBase : _layers) {
-        if (!layerBase->isVisible()) continue;
-        if (layerBase->getScreenType() != currentScreen) continue;
-
-        auto layer = std::static_pointer_cast<VideoLayer>(layerBase);
-
-        float pixelX = layer->getX() * cellWidth;
-        float pixelY = layer->getY() * cellHeight;
-        float pixelW = layer->getWidthCells() * cellWidth;
-        float pixelH = layer->getHeightCells() * cellHeight;
-
-        if (layer->getPositionMode() == PositionMode::Relative && scrollOffset > 0) {
-            pixelY += scrollOffset * cellHeight;
-        }
-
-        if (termRows > 0) {
-            float screenPixelHeight = termRows * cellHeight;
-            if (pixelY + pixelH <= 0 || pixelY >= screenPixelHeight) {
-                continue;
-            }
-        }
-
-        if (auto res = layer->render(*engine_->context(), targetView, targetFormat,
-                                      screenWidth, screenHeight,
-                                      pixelX, pixelY, pixelW, pixelH); !res) {
-            return Err<void>("Failed to render VideoLayer", res);
-        }
-    }
-    return Ok();
-}
-
 //-----------------------------------------------------------------------------
 // VideoLayer
 //-----------------------------------------------------------------------------
@@ -424,24 +385,6 @@ Result<void> VideoLayer::decodeNextFrame() {
     }
 }
 
-Result<void> VideoLayer::update(double deltaTime) {
-    if (!_playing || _failed) return Ok();
-
-    _accumulated_time += deltaTime;
-
-    // Check if it's time for next frame
-    if (_accumulated_time >= _frame_time) {
-        _accumulated_time -= _frame_time;
-
-        auto res = decodeNextFrame();
-        if (!res && !_loop) {
-            _playing = false;
-        }
-    }
-
-    return Ok();
-}
-
 void VideoLayer::play() { _playing = true; }
 void VideoLayer::pause() { _playing = false; }
 void VideoLayer::stop() {
@@ -524,15 +467,28 @@ void VideoLayer::updateTexture(WebGPUContext& ctx) {
     _frame_updated = false;
 }
 
-Result<void> VideoLayer::render(WebGPUContext& ctx,
-                                 WGPUTextureView targetView, WGPUTextureFormat targetFormat,
-                                 uint32_t screenWidth, uint32_t screenHeight,
-                                 float pixelX, float pixelY, float pixelW, float pixelH) {
+Result<void> VideoLayer::render(WebGPUContext& ctx) {
     if (_failed) return Err<void>("VideoLayer already failed");
+    if (!_visible) return Ok();
     if (_frame_buffer.empty()) return Err<void>("VideoLayer has no frame data");
 
+    // Get render context set by owner
+    const auto& rc = _render_context;
+
+    // Update playback (integrate former update() logic)
+    if (_playing) {
+        _accumulated_time += rc.deltaTime;
+        if (_accumulated_time >= _frame_time) {
+            _accumulated_time -= _frame_time;
+            auto res = decodeNextFrame();
+            if (!res && !_loop) {
+                _playing = false;
+            }
+        }
+    }
+
     if (!_gpu_initialized) {
-        auto result = createPipeline(ctx, targetFormat);
+        auto result = createPipeline(ctx, rc.targetFormat);
         if (!result) {
             _failed = true;
             return Err<void>("Failed to create pipeline", result);
@@ -545,14 +501,33 @@ Result<void> VideoLayer::render(WebGPUContext& ctx,
         return Err<void>("VideoLayer pipeline not initialized");
     }
 
+    // Calculate pixel position from cell position
+    float pixelX = _x * rc.cellWidth;
+    float pixelY = _y * rc.cellHeight;
+    float pixelW = _width_cells * rc.cellWidth;
+    float pixelH = _height_cells * rc.cellHeight;
+
+    // For Relative layers, adjust position when viewing scrollback
+    if (_position_mode == PositionMode::Relative && rc.scrollOffset > 0) {
+        pixelY += rc.scrollOffset * rc.cellHeight;
+    }
+
+    // Skip if off-screen (not an error)
+    if (rc.termRows > 0) {
+        float screenPixelHeight = rc.termRows * rc.cellHeight;
+        if (pixelY + pixelH <= 0 || pixelY >= screenPixelHeight) {
+            return Ok();
+        }
+    }
+
     // Update texture with latest frame
     updateTexture(ctx);
 
     // Update uniforms
-    float ndcX = (pixelX / screenWidth) * 2.0f - 1.0f;
-    float ndcY = 1.0f - (pixelY / screenHeight) * 2.0f;
-    float ndcW = (pixelW / screenWidth) * 2.0f;
-    float ndcH = (pixelH / screenHeight) * 2.0f;
+    float ndcX = (pixelX / rc.screenWidth) * 2.0f - 1.0f;
+    float ndcY = 1.0f - (pixelY / rc.screenHeight) * 2.0f;
+    float ndcW = (pixelW / rc.screenWidth) * 2.0f;
+    float ndcH = (pixelH / rc.screenHeight) * 2.0f;
 
     struct Uniforms { float rect[4]; } uniforms;
     uniforms.rect[0] = ndcX;
@@ -567,7 +542,7 @@ Result<void> VideoLayer::render(WebGPUContext& ctx,
     if (!encoder) return Err<void>("Failed to create command encoder");
 
     WGPURenderPassColorAttachment colorAttachment = {};
-    colorAttachment.view = targetView;
+    colorAttachment.view = rc.targetView;
     colorAttachment.loadOp = WGPULoadOp_Load;
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
