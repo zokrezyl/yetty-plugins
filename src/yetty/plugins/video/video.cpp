@@ -573,6 +573,13 @@ Result<void> VideoLayer::render(WebGPUContext& ctx) {
     return Ok();
 }
 
+bool VideoLayer::renderToPass(WGPURenderPassEncoder pass, WebGPUContext& ctx) {
+    (void)pass;
+    (void)ctx;
+    // Video layer doesn't render to pass directly - uses its own render method
+    return true;
+}
+
 Result<void> VideoLayer::createPipeline(WebGPUContext& ctx, WGPUTextureFormat targetFormat) {
     WGPUDevice device = ctx.getDevice();
 

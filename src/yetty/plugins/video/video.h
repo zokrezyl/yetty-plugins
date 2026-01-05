@@ -56,6 +56,7 @@ public:
 
     // Renderable interface - uses RenderContext from base class
     Result<void> render(WebGPUContext& ctx) override;
+    bool renderToPass(WGPURenderPassEncoder pass, WebGPUContext& ctx) override;
 
     // Playback control
     void play();

@@ -436,6 +436,13 @@ Result<void> PDFLayer::render(WebGPUContext& ctx) {
                               pixelX, pixelY, pixelW, pixelH);
 }
 
+bool PDFLayer::renderToPass(WGPURenderPassEncoder pass, WebGPUContext& ctx) {
+    (void)pass;
+    (void)ctx;
+    // PDF layer doesn't render to pass directly - uses its own render method
+    return true;
+}
+
 //-----------------------------------------------------------------------------
 // Mouse Scroll
 //-----------------------------------------------------------------------------

@@ -175,9 +175,21 @@ if(UNIX AND NOT APPLE)
     target_compile_definitions(glfw3webgpu PRIVATE _GLFW_X11)
 endif()
 
+# Taywee/args for command line parsing
+CPMAddPackage(
+    NAME args
+    GITHUB_REPOSITORY Taywee/args
+    GIT_TAG 6.4.6
+)
+
 # FFmpeg for video plugin (Unix only - requires ./configure + make)
 if(UNIX)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/build-tools/cmake/ffmpeg ffmpeg_build)
+endif()
+
+# Python for python plugin (Unix only - requires ./configure + make)
+if(UNIX)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/build-tools/cmake/python python_build)
 endif()
 
 #-----------------------------------------------------------------------------
@@ -237,3 +249,27 @@ set_target_properties(yetty_core PROPERTIES
 # Build plugins
 #-----------------------------------------------------------------------------
 add_subdirectory(src/yetty/plugins)
+
+#-----------------------------------------------------------------------------
+# Build plugin tester application
+#-----------------------------------------------------------------------------
+add_executable(yetty-plugin-tester src/tester/main.cpp)
+
+target_include_directories(yetty-plugin-tester PRIVATE
+    ${yetty_SOURCE_DIR}/include
+    ${yetty_SOURCE_DIR}/src
+)
+
+target_link_libraries(yetty-plugin-tester PRIVATE
+    yetty_core
+    webgpu
+    glfw
+    glfw3webgpu
+    spdlog::spdlog
+    args
+    ${CMAKE_DL_LIBS}  # For dlopen/dlsym
+)
+
+set_target_properties(yetty-plugin-tester PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
