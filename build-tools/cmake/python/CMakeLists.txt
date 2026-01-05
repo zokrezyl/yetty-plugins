@@ -30,9 +30,11 @@ set(PYTHON_CONFIGURE_OPTS
 )
 
 if(APPLE)
-    # macOS specific options - don't use framework for easier linking
+    # macOS specific options
+    # Don't use --enable-universalsdk as it requires specifying architectures
+    # and we only need to build for the native architecture
     list(APPEND PYTHON_CONFIGURE_OPTS
-        --enable-universalsdk
+        --without-dtrace
     )
 endif()
 
