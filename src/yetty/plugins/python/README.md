@@ -8,7 +8,30 @@ This plugin embeds a Python interpreter into yetty, allowing Python scripts to r
 - Direct WebGPU rendering (no offscreen copying)
 - Integration with pygfx and fastplotlib
 - Shared wgpu-native library between C++ and Python
-- Automatic package installation (pygfx, fastplotlib, wgpu, etc.)
+- Automatic package installation on first run
+
+## Package Installation
+
+On first plugin load, required packages are automatically installed:
+
+```
+pygfx, fastplotlib, wgpu, glfw, pillow, imageio
+```
+
+**Location:** Following XDG Base Directory Specification:
+- `$XDG_CACHE_HOME/yetty/python-packages` if `XDG_CACHE_HOME` is set
+- `~/.cache/yetty/python-packages` otherwise
+
+Packages are stored in cache because they can be regenerated via `pip install`.
+
+**Note:** This is NOT a virtual environment - packages are installed using `pip install --target=` to a flat directory. This directory is added to `sys.path` when the Python interpreter initializes.
+
+To force reinstallation (e.g., after upgrade), delete the packages directory:
+```bash
+rm -rf ~/.cache/yetty/python-packages
+# Or if XDG_CACHE_HOME is set:
+rm -rf $XDG_CACHE_HOME/yetty/python-packages
+```
 
 ## Usage
 
@@ -208,23 +231,31 @@ fig.show()
 
 ## Adding Other Python Modules
 
-### Method 1: pip install (Recommended)
+### Method 1: pip install to target directory (Recommended)
 
-Packages are automatically installed to `~/.yetty/python-packages/`. To add more:
+Install additional packages to the same target directory:
 
-```python
-# In your Python script
-import subprocess
-import sys
+```bash
+# From command line (using system pip)
+pip install --target ~/.cache/yetty/python-packages your-package-name
 
-subprocess.check_call([
-    sys.executable, '-m', 'pip', 'install',
-    '--target', '/home/user/.yetty/python-packages',
-    'your-package-name'
-])
+# Or using the embedded Python
+./build-desktop-release/python/install/bin/python3 -m pip install \
+    --target ~/.cache/yetty/python-packages your-package-name
 ```
 
-Or modify `setupPythonPackages()` in `python.cpp`:
+Or from within a Python script:
+```python
+import subprocess
+import os
+
+# Get XDG-compliant cache path
+cache_home = os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache'))
+pkg_path = os.path.join(cache_home, 'yetty', 'python-packages')
+subprocess.check_call(['pip', 'install', '--target', pkg_path, 'your-package-name'])
+```
+
+To add packages to the default installation, modify `setupPythonPackages()` in `python.cpp`:
 
 ```cpp
 std::string installCmd = ldPath + embeddedPip +

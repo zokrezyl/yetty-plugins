@@ -25,10 +25,15 @@ namespace yetty {
 //-----------------------------------------------------------------------------
 
 static std::string getPythonPackagesPath() {
-    // Use ~/.yetty/python-packages as the packages location
+    // Use XDG_CACHE_HOME/yetty/python-packages (defaults to ~/.cache/yetty/python-packages)
+    // Packages are cache-like since they can be regenerated via pip install
+    const char* cacheHome = std::getenv("XDG_CACHE_HOME");
+    if (cacheHome && cacheHome[0] != '\0') {
+        return std::string(cacheHome) + "/yetty/python-packages";
+    }
     const char* home = std::getenv("HOME");
     if (!home) home = "/tmp";
-    return std::string(home) + "/.yetty/python-packages";
+    return std::string(home) + "/.cache/yetty/python-packages";
 }
 
 static bool setupPythonPackages() {
